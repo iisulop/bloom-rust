@@ -1,21 +1,94 @@
+//! Bloom filter implementation for efficient probabilistic checking if a key exists in a dataset.
+
+use log::debug;
+use bit_vec::BitVec;
+
+/// Trait for the general bloom filter operations
+pub trait BloomFilterOperation {
+    fn insert(&mut self, key: &[u8]);
+    fn contains_key(&self, key: &[u8]) -> bool;
+}
+
+type HashFunction = Vec<fn(&[u8]) -> u128>;
+
+/// Bloom filter struct containing the bitfield and hash functions related to it
+pub struct BloomFilter {
+    bitfield: BitVec,
+    hash_functions: HashFunction,
+}
+
+/// Bloom filter implementation specific functions
+impl BloomFilter {
+    /// Initialize a bloom filter
+    pub fn new(bit_array_size: usize, hash_functions: HashFunction) -> BloomFilter {
+        BloomFilter {
+            bitfield: BitVec::from_elem(bit_array_size, false),
+            hash_functions,
+        }
+    }
+}
+
+/// Operations available for the bloom filters
+impl crate::BloomFilterOperation for BloomFilter {
+    /// Insert key into the bloom filter
+    fn insert(&mut self, key: &[u8]) {
+        debug!("Inserting key");
+        let bf_len = self.bitfield.len() as u128;
+        for f in self.hash_functions.iter() {
+            let h = f(key);
+            let pos = h % bf_len;
+            self.bitfield.set(pos as usize, true);
+        }
+        debug!("{:#?}", self.bitfield);
+    }
+
+    /// Check if the bloom filter contains the given key
+    fn contains_key(&self, key: &[u8]) -> bool {
+        let bf_len = self.bitfield.len() as u128;
+        for f in self.hash_functions.iter() {
+            let h = f(key);
+            let pos = h % bf_len;
+            if !self.bitfield[pos as usize] {
+                return false
+            }
+        }
+        true
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use fasthash::murmur3;
+    use rand::Rng;
+
+    fn ean_code() -> Vec<u8> {
+         let num = rand::thread_rng().gen_range(100_000_000_000u64, 999_999_999_999u64).to_string();
+         let mut checknum: u8 = 0;
+         let mut multiplier: u8 = 3;
+         if num.len() % 2 == 1 {
+            multiplier = 1
+         }
+         for n in num.chars() {
+            checknum += (multiplier * n.to_digit(10).unwrap() as u8) % 10;
+         }
+         let res = format!("{}{}", num, checknum);
+         res.into_bytes()
+    }
 
     fn hash_function(input: &[u8]) -> u128 {
-        let h = murmur3::hash128(&input);
-        h
+        murmur3::hash128(&input)
     }
 
     #[test]
     fn init() {
-        crate::bloom::BloomFilter::new(10, vec![hash_function]);
+        crate::BloomFilter::new(10, vec![hash_function]);
     }
 
     #[test]
     fn add_key() {
         use crate::BloomFilterOperation;
-        let mut bf = crate::bloom::BloomFilter::new(10, vec![hash_function]);
+        let mut bf = crate::BloomFilter::new(10, vec![hash_function]);
         let key = b"key";
         bf.insert(key);
     }
@@ -23,69 +96,13 @@ mod tests {
     #[test]
     fn contains_key() {
         use crate::BloomFilterOperation;
-        let mut bf = crate::bloom::BloomFilter::new(10, vec![hash_function]);
-        let key = b"key";
-        let result = bf.contains_key(key);
+        let mut bf = crate::BloomFilter::new(10, vec![hash_function]);
+        let key = ean_code();
+        let result = bf.contains_key(&key);
         assert_eq!(result, false);
-        bf.insert(key);
-        let result = bf.contains_key(key);
+        bf.insert(&key);
+        let result = bf.contains_key(&key);
         assert_eq!(result, true);
     }
 }
 
-pub trait BloomFilterOperation {
-    fn insert(&mut self, key: &[u8]) -> ();
-    fn contains_key(&self, key: &[u8]) -> bool;
-}
-
-pub mod bloom {
-    use bit_vec::BitVec;
-    type HashFunction = Vec<fn(&[u8]) -> u128>;
-
-    pub struct BloomFilter {
-        bitfield: BitVec,
-        hash_functions: HashFunction,
-    }
-
-    impl BloomFilter {
-        pub fn new(bit_array_size: usize, hash_functions: HashFunction) -> BloomFilter {
-            BloomFilter {
-                bitfield: BitVec::from_elem(bit_array_size, false),
-                hash_functions,
-            }
-        }
-
-        pub fn calculate_bit_array_size(
-            // bit_array_size: u64,
-            num_elements: f64,
-            // num_hash_functions: f64,
-            num_false_positives: f64,
-        ) -> f64 {
-            let e = 1.0_f64.exp();
-            (-num_elements * e.log(num_false_positives)) / (e.log(2.0_f64).powf(2.0_f64))
-        }
-    }
-
-    impl crate::BloomFilterOperation for BloomFilter {
-        fn insert(&mut self, key: &[u8]) {
-            let bf_len = self.bitfield.len() as u128;
-            for f in self.hash_functions.iter() {
-                let h = f(key);
-                let pos = h % bf_len;
-                self.bitfield.set(pos as usize, true);
-            }
-        }
-
-        fn contains_key(&self, key: &[u8]) -> bool {
-            let bf_len = self.bitfield.len() as u128;
-            for f in self.hash_functions.iter() {
-                let h = f(key);
-                let pos = h % bf_len;
-                if !self.bitfield[pos as usize] {
-                    return false;
-                }
-            }
-            return true;
-        }
-    }
-}
