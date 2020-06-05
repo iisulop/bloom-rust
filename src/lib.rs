@@ -1,7 +1,7 @@
 //! Bloom filter implementation for efficient probabilistic checking if a key exists in a dataset.
 
-use log::debug;
 use bit_vec::BitVec;
+use log::debug;
 
 /// Trait for the general bloom filter operations
 pub trait BloomFilterOperation {
@@ -49,13 +49,12 @@ impl crate::BloomFilterOperation for BloomFilter {
             let h = f(key);
             let pos = h % bf_len;
             if !self.bitfield[pos as usize] {
-                return false
+                return false;
             }
         }
         true
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -63,17 +62,19 @@ mod tests {
     use rand::Rng;
 
     fn ean_code() -> Vec<u8> {
-         let num = rand::thread_rng().gen_range(100_000_000_000u64, 999_999_999_999u64).to_string();
-         let mut checknum: u8 = 0;
-         let mut multiplier: u8 = 3;
-         if num.len() % 2 == 1 {
+        let num = rand::thread_rng()
+            .gen_range(100_000_000_000u64, 999_999_999_999u64)
+            .to_string();
+        let mut checknum: u8 = 0;
+        let mut multiplier: u8 = 3;
+        if num.len() % 2 == 1 {
             multiplier = 1
-         }
-         for n in num.chars() {
+        }
+        for n in num.chars() {
             checknum += (multiplier * n.to_digit(10).unwrap() as u8) % 10;
-         }
-         let res = format!("{}{}", num, checknum);
-         res.into_bytes()
+        }
+        let res = format!("{}{}", num, checknum);
+        res.into_bytes()
     }
 
     fn hash_function(input: &[u8]) -> u128 {
@@ -105,4 +106,3 @@ mod tests {
         assert_eq!(result, true);
     }
 }
-
